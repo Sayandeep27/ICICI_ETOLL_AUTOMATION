@@ -3,7 +3,7 @@ package com.example.etoll;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
-// working properly and giving current output files
+// voucher and output files are generated accurately and log files are stored as well
 
 import java.io.*;
 import java.math.BigDecimal;
@@ -13,6 +13,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.logging.*;
 
 /**
  * EtollVoucherGenerator - standalone version that reads dsr_report.xlsx from project root,
@@ -22,10 +23,14 @@ import java.util.*;
  *   - Voucher
  *   - Upload
  *
+ * Minimal logging: logs/<timestamp>_etoll_log.txt
+ *
  * Usage:
  *   mvn package
- *   java -jar target/etoll-1.0.0.jar
+ *   java -jar target/etoll-1.0.0-jar-with-dependencies.jar
  */
+
+
 public class EtollVoucherGenerator {
 
     // ---------------- CONFIG (fixed as requested) ----------------
@@ -91,26 +96,73 @@ public class EtollVoucherGenerator {
         return m;
     }
 
+    // Logger (java.util.logging)
+    private static final Logger LOGGER = Logger.getLogger(EtollVoucherGenerator.class.getName());
+
     public static void main(String[] args) {
-        System.out.println("Starting EtollVoucherGenerator...");
+        setupFileLogging();
+        LOGGER.info("Starting EtollVoucherGenerator...");
+
         try {
             Path dsr = Paths.get(DSR_FILE);
             if (!Files.exists(dsr)) {
-                System.err.println("Error: " + DSR_FILE + " not found in current directory: " + Paths.get("").toAbsolutePath());
+                String msg = "Error: " + DSR_FILE + " not found in current directory: " + Paths.get("").toAbsolutePath();
+                LOGGER.severe(msg);
+                System.err.println(msg);
                 System.exit(1);
             }
             Map<String,Object> result = generateVoucher(dsr);
+            LOGGER.info("Result: " + result);
             System.out.println("Result: " + result);
             if ("ok".equals(result.get("status"))) {
-                System.out.println("Done. Output saved to: " + result.get("path"));
+                String doneMsg = "Done. Output saved to: " + result.get("path");
+                LOGGER.info(doneMsg);
+                System.out.println(doneMsg);
                 System.exit(0);
             } else {
-                System.err.println("Completed with error. Details: " + result);
+                String errMsg = "Completed with error. Details: " + result;
+                LOGGER.warning(errMsg);
+                System.err.println(errMsg);
                 System.exit(2);
             }
         } catch (Throwable t) {
+            LOGGER.log(Level.SEVERE, "Unhandled exception", t);
             t.printStackTrace();
             System.exit(3);
+        }
+    }
+
+    /**
+     * Configure simple file logging into ./logs/ (timestamped file).
+     */
+    private static void setupFileLogging() {
+        try {
+            Path logsDir = Paths.get("logs");
+            Files.createDirectories(logsDir);
+            String ts = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss").format(LocalDate.now().atStartOfDay());
+            // Use milliseconds time portion to avoid overwrites if run multiple times per day:
+            String fileName = "etoll_log_" + System.currentTimeMillis() + ".txt";
+            Path logFile = logsDir.resolve(fileName);
+
+            // Create a FileHandler writing plain text
+            FileHandler fh = new FileHandler(logFile.toString(), true);
+            fh.setEncoding("UTF-8");
+            fh.setFormatter(new SimpleFormatter());
+            fh.setLevel(Level.ALL);
+
+            Logger root = Logger.getLogger("");
+            // Remove other handlers if present (to avoid duplicate console output)
+            for (Handler h : root.getHandlers()) {
+                if (h instanceof ConsoleHandler) {
+                    h.setLevel(Level.INFO); // keep console at INFO
+                }
+            }
+            LOGGER.addHandler(fh);
+            LOGGER.setLevel(Level.ALL);
+            LOGGER.info("Logging started. Log file: " + logFile.toAbsolutePath().toString());
+        } catch (IOException e) {
+            // If logging setup fails, continue with console only
+            System.err.println("Failed to create log file: " + e.getMessage());
         }
     }
 
@@ -137,6 +189,8 @@ public class EtollVoucherGenerator {
         String dd_mm_yy = settlement.format(DateTimeFormatter.ofPattern("dd.MM.yy"));
         String cycle = RUN_NUMBER + "C";
 
+        LOGGER.info("Settlement date: " + settlement + ", cycle: " + cycle);
+
         // normalize helpers
         for (Map<String,String> r : rows) {
             r.put("TC", safeTrimLower(r.getOrDefault(COL_TRANSACTION_CYCLE,"")));
@@ -154,6 +208,7 @@ public class EtollVoucherGenerator {
                 break;
             }
         }
+        LOGGER.info("Final Net Amt (Rightmost+Lowest) = " + totalFinal);
         System.out.println("Final Net Amt (Rightmost+Lowest) = " + totalFinal);
 
         // Inward GST detection
@@ -172,6 +227,8 @@ public class EtollVoucherGenerator {
                 break;
             }
         }
+        LOGGER.info("Derived INWARD values -> Income Debit: " + incomeDebit + ", GST Debit: " + gstDebit
+                + ", Income Credit: " + incomeCredit + ", GST Credit: " + gstCredit);
         System.out.println("Derived INWARD values -> Income Debit: " + incomeDebit + ", GST Debit: " + gstDebit
                 + ", Income Credit: " + incomeCredit + ", GST Credit: " + gstCredit);
 
@@ -222,6 +279,7 @@ public class EtollVoucherGenerator {
                 }
                 amt = round2(amt);
                 voucher.add(new VoucherRow(acct, amt.equals(BigDecimal.ZERO) ? null : amt, null, narration, desc));
+                LOGGER.info("Arbitration Vedict: summed SETAMTDR = " + amt);
                 System.out.println("Arbitration Vedict: summed SETAMTDR = " + amt);
                 continue;
             }
@@ -281,6 +339,7 @@ public class EtollVoucherGenerator {
             if (vr.credit != null) cTotal = cTotal.add(vr.credit);
         }
         dTotal = round2(dTotal); cTotal = round2(cTotal);
+        LOGGER.info("Voucher totals -> Debit: " + dTotal + " Credit: " + cTotal);
         System.out.println("Voucher totals -> Debit: " + dTotal + " Credit: " + cTotal);
 
         // create output folder
@@ -302,6 +361,7 @@ public class EtollVoucherGenerator {
                     out.write(os);
                 }
             }
+            LOGGER.warning("Debit and credit not tallied. Error file saved: " + errFile.toString());
             return Map.of("status","error","message","Debit and credit not tallied","path",errFile.toString(),"debit",dTotal,"credit",cTotal);
         }
 
@@ -313,6 +373,7 @@ public class EtollVoucherGenerator {
             }
         }
 
+        LOGGER.info("Voucher + Upload saved at: " + file.toString());
         return Map.of("status","ok","path",file.toString(),"debit",dTotal,"credit",cTotal);
     }
 
@@ -324,7 +385,9 @@ public class EtollVoucherGenerator {
         Row header = it.next();
         List<String> headers = new ArrayList<>();
         for (Cell c : header) {
-            headers.add(c.getStringCellValue().trim());
+            String hv = "";
+            try { hv = c.getStringCellValue().trim(); } catch (Exception e) { hv = cellToString(c).trim(); }
+            headers.add(hv);
         }
         while (it.hasNext()) {
             Row r = it.next();
@@ -336,6 +399,7 @@ public class EtollVoucherGenerator {
             }
             rows.add(map);
         }
+        LOGGER.fine("Read " + rows.size() + " data rows from DSR sheet");
         return rows;
     }
 

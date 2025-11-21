@@ -1,0 +1,22 @@
+Nov 21, 2025 11:34:48 AM com.example.etoll.EtollVoucherGenerator setupFileLogging
+INFO: Logging started. Log file: E:\etoll-java\etoll\logs\etoll_log_1763705088732.txt
+Nov 21, 2025 11:34:48 AM com.example.etoll.EtollVoucherGenerator main
+INFO: Starting EtollVoucherGenerator...
+Nov 21, 2025 11:34:50 AM com.example.etoll.EtollVoucherGenerator readSheetToMaps
+FINE: Read 999 data rows from DSR sheet
+Nov 21, 2025 11:34:50 AM com.example.etoll.EtollVoucherGenerator generateVoucher
+INFO: Settlement date: 2025-09-25, cycle: 1C
+Nov 21, 2025 11:34:50 AM com.example.etoll.EtollVoucherGenerator generateVoucher
+INFO: Final Net Amt (Rightmost+Lowest) = 233537688.00
+Nov 21, 2025 11:34:50 AM com.example.etoll.EtollVoucherGenerator generateVoucher
+INFO: Derived INWARD values -> Income Debit: 24.44, GST Debit: 4.40, Income Credit: 207277.77, GST Credit: 37310.00
+Nov 21, 2025 11:34:50 AM com.example.etoll.EtollVoucherGenerator generateVoucher
+INFO: Arbitration Vedict: summed SETAMTDR = 54324.00
+Nov 21, 2025 11:34:50 AM com.example.etoll.EtollVoucherGenerator generateVoucher
+INFO: Voucher totals -> Debit: 233810247.61 Credit: 233810247.58
+Nov 21, 2025 11:34:51 AM com.example.etoll.EtollVoucherGenerator generateVoucher
+WARNING: Debit and credit not tallied. Error file saved: E-tollAcquiringSettlement\Processing\2025\09\25\ERROR_ETOLL_ACQUIRING_VOUCHER_250925_N1.xlsx
+Nov 21, 2025 11:34:51 AM com.example.etoll.EtollVoucherGenerator main
+INFO: Result: {message=Debit and credit not tallied, credit=233810247.58, debit=233810247.61, status=error, path=E-tollAcquiringSettlement\Processing\2025\09\25\ERROR_ETOLL_ACQUIRING_VOUCHER_250925_N1.xlsx}
+Nov 21, 2025 11:34:51 AM com.example.etoll.EtollVoucherGenerator main
+WARNING: Completed with error. Details: {message=Debit and credit not tallied, credit=233810247.58, debit=233810247.61, status=error, path=E-tollAcquiringSettlement\Processing\2025\09\25\ERROR_ETOLL_ACQUIRING_VOUCHER_250925_N1.xlsx}
