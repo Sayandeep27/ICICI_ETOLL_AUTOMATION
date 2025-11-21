@@ -3,8 +3,6 @@ package com.example.etoll;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
-// voucher and output files are generated accurately and log files are stored as well
-
 import java.io.*;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -13,44 +11,29 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.logging.*;
 
-/**
- * EtollVoucherGenerator - standalone version that reads dsr_report.xlsx from project root,
- * uses RUN_NUMBER=1 and OUTPUT_ROOT=E-tollAcquiringSettlement/Processing.
- *
- * Produces an XLSX with two sheets:
- *   - Voucher
- *   - Upload
- *
- * Minimal logging: logs/<timestamp>_etoll_log.txt
- *
- * Usage:
- *   mvn package
- *   java -jar target/etoll-1.0.0-jar-with-dependencies.jar
- */
-
+// proper input and output folder structure added
 
 public class EtollVoucherGenerator {
 
-    // ---------------- CONFIG (fixed as requested) ----------------
-    private static final String DSR_FILE = "dsr_report.xlsx";
+    private static final Path DSR_ROOT = Paths.get("dsr_reports");
     private static final int RUN_NUMBER = 1;
     private static final Path OUTPUT_ROOT = Paths.get("E-tollAcquiringSettlement", "Processing");
 
-    // Column names (must match Excel)
-    private static final String COL_SETTLEMENT_DATE   = "Settlement Date";
-    private static final String COL_TRANSACTION_CYCLE = "Transaction Cycle";
-    private static final String COL_TRANSACTION_TYPE  = "Transaction Type";
-    private static final String COL_CHANNEL           = "Channel";
-    private static final String COL_SETAMTDR          = "SETAMTDR";
-    private static final String COL_SETAMTCR          = "SETAMTCR";
-    private static final String COL_SERVICE_FEE_DR    = "Service Fee Amt Dr";
-    private static final String COL_SERVICE_FEE_CR    = "Service Fee Amt Cr";
-    private static final String COL_FINAL_NET_AMT     = "Final Net Amt";
-    private static final String COL_INWARD_OUTWARD    = "Inward/Outward";
+    private static final Path LOG_FOLDER = Paths.get("logs");
+    private static PrintWriter LOG;
 
-    // TEMPLATE (unchanged)
+    private static final String COL_SETTLEMENT_DATE = "Settlement Date";
+    private static final String COL_TRANSACTION_CYCLE = "Transaction Cycle";
+    private static final String COL_TRANSACTION_TYPE = "Transaction Type";
+    private static final String COL_CHANNEL = "Channel";
+    private static final String COL_SETAMTDR = "SETAMTDR";
+    private static final String COL_SETAMTCR = "SETAMTCR";
+    private static final String COL_SERVICE_FEE_DR = "Service Fee Amt Dr";
+    private static final String COL_SERVICE_FEE_CR = "Service Fee Amt Cr";
+    private static final String COL_FINAL_NET_AMT = "Final Net Amt";
+    private static final String COL_INWARD_OUTWARD = "Inward/Outward";
+
     private static final List<TemplateRow> TEMPLATE = List.of(
             new TemplateRow("0103SLRGTSRC", "NPCIR5{yyyymmdd} {ddmmyy}_{cycle} ETCAC", "Final Net Amt"),
             new TemplateRow("", "", ""),
@@ -73,8 +56,8 @@ public class EtollVoucherGenerator {
             new TemplateRow("0103SLPPCIGT", "Etoll acq {dd_mm_yy}_{cycle}", "GST Credit")
     );
 
-    // RULES (unchanged)
     private static final Map<String, Rule> RULES = initRules();
+
     private static Map<String, Rule> initRules() {
         Map<String, Rule> m = new HashMap<>();
         m.put("NETC Settled Transaction", new Rule(List.of("netc settled transaction"), COL_SETAMTCR, "credit", null));
@@ -96,145 +79,114 @@ public class EtollVoucherGenerator {
         return m;
     }
 
-    // Logger (java.util.logging)
-    private static final Logger LOGGER = Logger.getLogger(EtollVoucherGenerator.class.getName());
-
     public static void main(String[] args) {
-        setupFileLogging();
-        LOGGER.info("Starting EtollVoucherGenerator...");
-
         try {
-            Path dsr = Paths.get(DSR_FILE);
-            if (!Files.exists(dsr)) {
-                String msg = "Error: " + DSR_FILE + " not found in current directory: " + Paths.get("").toAbsolutePath();
-                LOGGER.severe(msg);
-                System.err.println(msg);
-                System.exit(1);
+            setupLogging();
+            println("Starting batch processing...");
+
+            if (!Files.exists(DSR_ROOT)) {
+                println("ERROR: dsr_reports folder not found.");
+                return;
             }
-            Map<String,Object> result = generateVoucher(dsr);
-            LOGGER.info("Result: " + result);
-            System.out.println("Result: " + result);
-            if ("ok".equals(result.get("status"))) {
-                String doneMsg = "Done. Output saved to: " + result.get("path");
-                LOGGER.info(doneMsg);
-                System.out.println(doneMsg);
-                System.exit(0);
-            } else {
-                String errMsg = "Completed with error. Details: " + result;
-                LOGGER.warning(errMsg);
-                System.err.println(errMsg);
-                System.exit(2);
-            }
-        } catch (Throwable t) {
-            LOGGER.log(Level.SEVERE, "Unhandled exception", t);
-            t.printStackTrace();
-            System.exit(3);
-        }
-    }
 
-    /**
-     * Configure simple file logging into ./logs/ (timestamped file).
-     */
-    private static void setupFileLogging() {
-        try {
-            Path logsDir = Paths.get("logs");
-            Files.createDirectories(logsDir);
-            String ts = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss").format(LocalDate.now().atStartOfDay());
-            // Use milliseconds time portion to avoid overwrites if run multiple times per day:
-            String fileName = "etoll_log_" + System.currentTimeMillis() + ".txt";
-            Path logFile = logsDir.resolve(fileName);
-
-            // Create a FileHandler writing plain text
-            FileHandler fh = new FileHandler(logFile.toString(), true);
-            fh.setEncoding("UTF-8");
-            fh.setFormatter(new SimpleFormatter());
-            fh.setLevel(Level.ALL);
-
-            Logger root = Logger.getLogger("");
-            // Remove other handlers if present (to avoid duplicate console output)
-            for (Handler h : root.getHandlers()) {
-                if (h instanceof ConsoleHandler) {
-                    h.setLevel(Level.INFO); // keep console at INFO
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(DSR_ROOT)) {
+                for (Path folder : stream) {
+                    if (Files.isDirectory(folder)) processFolder(folder);
                 }
             }
-            LOGGER.addHandler(fh);
-            LOGGER.setLevel(Level.ALL);
-            LOGGER.info("Logging started. Log file: " + logFile.toAbsolutePath().toString());
-        } catch (IOException e) {
-            // If logging setup fails, continue with console only
-            System.err.println("Failed to create log file: " + e.getMessage());
+
+            println("Batch processing completed.");
+        } catch (Exception e) {
+            println("Fatal error: " + e.getMessage());
+        } finally {
+            if (LOG != null) LOG.close();
         }
     }
 
-    public static Map<String,Object> generateVoucher(Path dsrPath) throws Exception {
-        // load workbook
+    private static void processFolder(Path folder) {
+        try {
+            Path dsr = folder.resolve("dsr_report.xlsx");
+            if (!Files.exists(dsr)) {
+                println("[SKIP] No dsr_report.xlsx in " + folder.getFileName());
+                return;
+            }
+
+            println("Processing: " + folder.getFileName());
+            Map<String, Object> res = generateVoucher(dsr);
+            println("Result: " + res.get("status") + " | file: " + res.get("path"));
+
+        } catch (Exception e) {
+            println("[ERROR] Failed processing folder " + folder.getFileName() + ": " + e.getMessage());
+        }
+    }
+
+    public static Map<String, Object> generateVoucher(Path dsrPath) throws Exception {
+
         Workbook wb;
-        try (InputStream is = Files.newInputStream(dsrPath, StandardOpenOption.READ)) {
+        try (InputStream is = Files.newInputStream(dsrPath)) {
             wb = WorkbookFactory.create(is);
         }
 
-        Sheet sheet = wb.getSheetAt(0); // first sheet assumed
-        List<Map<String,String>> rows = readSheetToMaps(sheet);
+        Sheet sheet = wb.getSheetAt(0);
+        List<Map<String, String>> rows = readSheetToMaps(sheet);
 
-        // forward-fill TC & TT
         forwardFill(rows, COL_TRANSACTION_CYCLE);
         forwardFill(rows, COL_TRANSACTION_TYPE);
 
-        // find settlement date
         LocalDate settlement = findSettlementDate(rows);
-        if (settlement == null) settlement = LocalDate.now(ZoneId.systemDefault());
+        if (settlement == null) settlement = LocalDate.now();
+
+        println("Settlement date inside Excel = " + settlement);
 
         String yyyymmdd = settlement.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String ddmmyy   = settlement.format(DateTimeFormatter.ofPattern("ddMMyy"));
+        String ddmmyy = settlement.format(DateTimeFormatter.ofPattern("ddMMyy"));
         String dd_mm_yy = settlement.format(DateTimeFormatter.ofPattern("dd.MM.yy"));
         String cycle = RUN_NUMBER + "C";
 
-        LOGGER.info("Settlement date: " + settlement + ", cycle: " + cycle);
-
-        // normalize helpers
-        for (Map<String,String> r : rows) {
-            r.put("TC", safeTrimLower(r.getOrDefault(COL_TRANSACTION_CYCLE,"")));
-            r.put("TT", safeTrimLower(r.getOrDefault(COL_TRANSACTION_TYPE,"")));
-            r.put("CH", safeTrimLower(r.getOrDefault(COL_CHANNEL,"")));
+        for (Map<String, String> r : rows) {
+            r.put("TC", safeLower(r.get(COL_TRANSACTION_CYCLE)));
+            r.put("TT", safeLower(r.get(COL_TRANSACTION_TYPE)));
+            r.put("CH", safeLower(r.get(COL_CHANNEL)));
         }
 
-        // Final net amt: last non-empty
         BigDecimal totalFinal = BigDecimal.ZERO;
-        for (int i = rows.size()-1; i >=0; --i) {
-            String v = rows.get(i).getOrDefault(COL_FINAL_NET_AMT,"").trim();
+        for (int i = rows.size() - 1; i >= 0; i--) {
+            String v = rows.get(i).getOrDefault(COL_FINAL_NET_AMT, "").trim();
             if (!v.isEmpty()) {
-                totalFinal = toDecimal(v);
-                totalFinal = round2(totalFinal);
+                totalFinal = round2(toDecimal(v));
                 break;
             }
         }
-        LOGGER.info("Final Net Amt (Rightmost+Lowest) = " + totalFinal);
-        System.out.println("Final Net Amt (Rightmost+Lowest) = " + totalFinal);
 
-        // Inward GST detection
-        BigDecimal incomeDebit = BigDecimal.ZERO, incomeCredit = BigDecimal.ZERO, gstDebit = BigDecimal.ZERO, gstCredit = BigDecimal.ZERO;
-        for (int i=0;i<rows.size();i++) {
-            String io = rows.get(i).getOrDefault(COL_INWARD_OUTWARD,"");
+        println("Final Net Amount = " + totalFinal);
+
+        BigDecimal incomeDebit = BigDecimal.ZERO, incomeCredit = BigDecimal.ZERO;
+        BigDecimal gstDebit = BigDecimal.ZERO, gstCredit = BigDecimal.ZERO;
+
+        for (int i = 0; i < rows.size(); i++) {
+            String io = rows.get(i).getOrDefault(COL_INWARD_OUTWARD, "");
             if ("INWARD GST".equalsIgnoreCase(io.trim())) {
-                if (i>0) {
-                    Map<String,String> ra = rows.get(i-1);
-                    incomeDebit = round2(toDecimal(ra.getOrDefault(COL_SERVICE_FEE_DR,"0")));
-                    incomeCredit = round2(toDecimal(ra.getOrDefault(COL_SERVICE_FEE_CR,"0")));
+
+                if (i > 0) {
+                    Map<String, String> prev = rows.get(i - 1);
+                    incomeDebit = round2(toDecimal(prev.getOrDefault(COL_SERVICE_FEE_DR, "0")));
+                    incomeCredit = round2(toDecimal(prev.getOrDefault(COL_SERVICE_FEE_CR, "0")));
                 }
-                Map<String,String> rg = rows.get(i);
-                gstDebit = round2(toDecimal(rg.getOrDefault(COL_SERVICE_FEE_DR,"0")));
-                gstCredit = round2(toDecimal(rg.getOrDefault(COL_SERVICE_FEE_CR,"0")));
+
+                Map<String, String> rg = rows.get(i);
+                gstDebit = round2(toDecimal(rg.getOrDefault(COL_SERVICE_FEE_DR, "0")));
+                gstCredit = round2(toDecimal(rg.getOrDefault(COL_SERVICE_FEE_CR, "0")));
                 break;
             }
         }
-        LOGGER.info("Derived INWARD values -> Income Debit: " + incomeDebit + ", GST Debit: " + gstDebit
-                + ", Income Credit: " + incomeCredit + ", GST Credit: " + gstCredit);
-        System.out.println("Derived INWARD values -> Income Debit: " + incomeDebit + ", GST Debit: " + gstDebit
-                + ", Income Credit: " + incomeCredit + ", GST Credit: " + gstCredit);
 
-        // Build voucher list
+        println("INWARD → incomeDr=" + incomeDebit + " gstDr=" + gstDebit +
+                " incomeCr=" + incomeCredit + " gstCr=" + gstCredit);
+
         List<VoucherRow> voucher = new ArrayList<>();
+
         for (TemplateRow t : TEMPLATE) {
+
             String acct = t.accountNo;
             String tmpl = t.template;
             String desc = t.description;
@@ -249,157 +201,164 @@ public class EtollVoucherGenerator {
                 continue;
             }
 
-            Rule rule = RULES.getOrDefault(desc, null);
+            Rule rule = RULES.get(desc);
 
             if (rule != null && "final".equals(rule.special)) {
-                voucher.add(new VoucherRow(acct, totalFinal.equals(BigDecimal.ZERO) ? null : totalFinal, null, narration, desc));
+                voucher.add(new VoucherRow(acct,
+                        totalFinal.equals(BigDecimal.ZERO) ? null : totalFinal,
+                        null, narration, desc));
                 continue;
             }
 
             if (rule != null && "inward_dr".equals(rule.special)) {
-                BigDecimal amt = "Income Debit".equals(desc) ? incomeDebit : gstDebit;
+                BigDecimal amt = desc.equals("Income Debit") ? incomeDebit : gstDebit;
                 voucher.add(new VoucherRow(acct, amt.equals(BigDecimal.ZERO) ? null : amt, null, narration, desc));
                 continue;
             }
 
             if (rule != null && "inward_cr".equals(rule.special)) {
-                BigDecimal amt = "Income Credit".equals(desc) ? incomeCredit : gstCredit;
+                BigDecimal amt = desc.equals("Income Credit") ? incomeCredit : gstCredit;
                 voucher.add(new VoucherRow(acct, null, amt.equals(BigDecimal.ZERO) ? null : amt, narration, desc));
                 continue;
             }
 
             if ("Arbitration Vedict".equals(desc)) {
                 BigDecimal amt = BigDecimal.ZERO;
-                for (Map<String,String> r : rows) {
-                    if ("arbitration vedict".equals(r.getOrDefault("TC","")) &&
-                            List.of("debit","non_fin").contains(r.getOrDefault("TT","").toLowerCase()) &&
-                            r.getOrDefault(COL_CHANNEL,"").trim().length()>0) {
-                        amt = amt.add(toDecimal(r.getOrDefault(COL_SETAMTDR,"0")));
+                for (Map<String, String> r : rows) {
+                    if ("arbitration vedict".equals(r.get("TC")) &&
+                            List.of("debit", "non_fin").contains(r.get("TT")) &&
+                            r.getOrDefault(COL_CHANNEL, "").trim().length() > 0) {
+                        amt = amt.add(toDecimal(r.getOrDefault(COL_SETAMTDR, "0")));
                     }
                 }
                 amt = round2(amt);
                 voucher.add(new VoucherRow(acct, amt.equals(BigDecimal.ZERO) ? null : amt, null, narration, desc));
-                LOGGER.info("Arbitration Vedict: summed SETAMTDR = " + amt);
-                System.out.println("Arbitration Vedict: summed SETAMTDR = " + amt);
                 continue;
             }
 
             List<String> cycles = rule != null && rule.cycles != null ? rule.cycles : List.of();
-            List<Map<String,String>> sel = new ArrayList<>();
-            for (Map<String,String> r : rows) {
-                if (cycles.contains(r.getOrDefault("TC",""))) sel.add(r);
-            }
-
-            String sumCol = rule != null ? rule.sumCol : null;
-            String side = rule != null ? rule.side : "debit";
-
-            if ("goodfaith".equals(side)) {
-                BigDecimal dr = BigDecimal.ZERO, cr = BigDecimal.ZERO;
-                for (Map<String,String> r : sel) {
-                    dr = dr.add(toDecimal(r.getOrDefault(COL_SETAMTDR,"0")));
-                    cr = cr.add(toDecimal(r.getOrDefault(COL_SETAMTCR,"0")));
-                }
-                dr = round2(dr); cr = round2(cr);
-                if (dr.compareTo(BigDecimal.ZERO) != 0) voucher.add(new VoucherRow(acct, dr, null, narration, desc));
-                else if (cr.compareTo(BigDecimal.ZERO) != 0) voucher.add(new VoucherRow(acct, null, cr, narration, desc));
-                else voucher.add(new VoucherRow(acct, null, null, narration, desc));
-                continue;
-            }
-
             BigDecimal amt = BigDecimal.ZERO;
-            if (sumCol != null) {
-                for (Map<String,String> r : sel) {
-                    amt = amt.add(toDecimal(r.getOrDefault(sumCol,"0")));
+
+            for (Map<String, String> r : rows) {
+                if (cycles.contains(r.get("TC"))) {
+                    amt = amt.add(toDecimal(r.getOrDefault(rule.sumCol, "0")));
                 }
-                amt = round2(amt);
             }
 
-            if ("credit".equals(side)) voucher.add(new VoucherRow(acct, null, amt.equals(BigDecimal.ZERO) ? null : amt, narration, desc));
-            else voucher.add(new VoucherRow(acct, amt.equals(BigDecimal.ZERO) ? null : amt, null, narration, desc));
+            amt = round2(amt);
+
+            if ("credit".equals(rule.side)) {
+                voucher.add(new VoucherRow(acct, null, amt.equals(BigDecimal.ZERO) ? null : amt, narration, desc));
+            } else {
+                voucher.add(new VoucherRow(acct, amt.equals(BigDecimal.ZERO) ? null : amt, null, narration, desc));
+            }
         }
 
-        // Build upload rows
         List<List<Object>> uploadRows = new ArrayList<>();
-        uploadRows.add(List.of("Account No","C/D","Amount","Narration"));
+        uploadRows.add(List.of("Account No", "C/D", "Amount", "Narration"));
+
         for (VoucherRow vr : voucher) {
             BigDecimal d = vr.debit;
             BigDecimal c = vr.credit;
-            String cd;
-            BigDecimal amount;
-            if (d != null && d.compareTo(BigDecimal.ZERO) != 0) { cd = "D"; amount = d; }
-            else if (c != null && c.compareTo(BigDecimal.ZERO) != 0) { cd = "C"; amount = c; }
-            else { cd = ""; amount = null; }
-            if (amount != null) uploadRows.add(List.of(vr.accountNo, cd, amount.doubleValue(), vr.narration));
+
+            if (d != null && d.compareTo(BigDecimal.ZERO) != 0)
+                uploadRows.add(List.of(vr.accountNo, "D", d.doubleValue(), vr.narration));
+            else if (c != null && c.compareTo(BigDecimal.ZERO) != 0)
+                uploadRows.add(List.of(vr.accountNo, "C", c.doubleValue(), vr.narration));
         }
 
-        // TALLY
         BigDecimal dTotal = BigDecimal.ZERO, cTotal = BigDecimal.ZERO;
         for (VoucherRow vr : voucher) {
             if (vr.debit != null) dTotal = dTotal.add(vr.debit);
             if (vr.credit != null) cTotal = cTotal.add(vr.credit);
         }
-        dTotal = round2(dTotal); cTotal = round2(cTotal);
-        LOGGER.info("Voucher totals -> Debit: " + dTotal + " Credit: " + cTotal);
-        System.out.println("Voucher totals -> Debit: " + dTotal + " Credit: " + cTotal);
 
-        // create output folder
-        Path folder = OUTPUT_ROOT.resolve(String.valueOf(settlement.getYear()))
+        dTotal = round2(dTotal);
+        cTotal = round2(cTotal);
+
+        println("Debit=" + dTotal + "  Credit=" + cTotal);
+
+        Path folder = OUTPUT_ROOT.resolve("" + settlement.getYear())
                 .resolve(String.format("%02d", settlement.getMonthValue()))
                 .resolve(String.format("%02d", settlement.getDayOfMonth()));
+
         Files.createDirectories(folder);
 
-        String ddmmyyStr = ddmmyy;
-        Path file = folder.resolve("ETOLL_ACQUIRING_VOUCHER_" + ddmmyyStr + "_N" + RUN_NUMBER + ".xlsx");
-        Path errFile = folder.resolve("ERROR_ETOLL_ACQUIRING_VOUCHER_" + ddmmyyStr + "_N" + RUN_NUMBER + ".xlsx");
+        Path okFile = folder.resolve("ETOLL_ACQUIRING_VOUCHER_" + ddmmyy + "_N" + RUN_NUMBER + ".xlsx");
+        Path errFile = folder.resolve("ERROR_ETOLL_ACQUIRING_VOUCHER_" + ddmmyy + "_N" + RUN_NUMBER + ".xlsx");
 
-        if (dTotal.compareTo(cTotal) != 0) {
-            // write error workbook
-            try (Workbook out = new XSSFWorkbook()) {
-                writeVoucherSheet(out, voucher);
-                writeUploadSheet(out, uploadRows);
-                try (OutputStream os = Files.newOutputStream(errFile, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-                    out.write(os);
-                }
-            }
-            LOGGER.warning("Debit and credit not tallied. Error file saved: " + errFile.toString());
-            return Map.of("status","error","message","Debit and credit not tallied","path",errFile.toString(),"debit",dTotal,"credit",cTotal);
-        }
+        boolean ok = dTotal.compareTo(cTotal) == 0;
 
         try (Workbook out = new XSSFWorkbook()) {
             writeVoucherSheet(out, voucher);
             writeUploadSheet(out, uploadRows);
-            try (OutputStream os = Files.newOutputStream(file, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+
+            Path writeTo = ok ? okFile : errFile;
+
+            try (OutputStream os = Files.newOutputStream(writeTo)) {
                 out.write(os);
             }
         }
 
-        LOGGER.info("Voucher + Upload saved at: " + file.toString());
-        return Map.of("status","ok","path",file.toString(),"debit",dTotal,"credit",cTotal);
+        return Map.of(
+                "status", ok ? "ok" : "error",
+                "path", (ok ? okFile : errFile).toString(),
+                "debit", dTotal,
+                "credit", cTotal
+        );
     }
 
-    // ---------- helpers ----------
-    private static List<Map<String,String>> readSheetToMaps(Sheet sheet) {
-        List<Map<String,String>> rows = new ArrayList<>();
+    private static void setupLogging() throws IOException {
+        Files.createDirectories(LOG_FOLDER);
+        String name = "etoll_log_" + System.currentTimeMillis() + ".txt";
+        LOG = new PrintWriter(Files.newBufferedWriter(LOG_FOLDER.resolve(name)));
+    }
+
+    private static void println(String msg) {
+        System.out.println(msg);
+        if (LOG != null) {
+            LOG.println(msg);
+            LOG.flush();
+        }
+    }
+
+    private static String safeLower(String s) {
+        return s == null ? "" : s.trim().toLowerCase();
+    }
+
+    private static BigDecimal toDecimal(String s) {
+        if (s == null) return BigDecimal.ZERO;
+        s = s.trim().replace(",", "");
+        if (s.isEmpty() || s.equalsIgnoreCase("nan")) return BigDecimal.ZERO;
+        try { return new BigDecimal(s); }
+        catch (Exception e) {
+            try { return BigDecimal.valueOf(Double.parseDouble(s)); }
+            catch (Exception ex) { return BigDecimal.ZERO; }
+        }
+    }
+
+    private static BigDecimal round2(BigDecimal d) {
+        return d.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private static List<Map<String, String>> readSheetToMaps(Sheet sheet) {
+        List<Map<String, String>> rows = new ArrayList<>();
         Iterator<Row> it = sheet.iterator();
         if (!it.hasNext()) return rows;
+
         Row header = it.next();
         List<String> headers = new ArrayList<>();
-        for (Cell c : header) {
-            String hv = "";
-            try { hv = c.getStringCellValue().trim(); } catch (Exception e) { hv = cellToString(c).trim(); }
-            headers.add(hv);
-        }
+        for (Cell c : header) headers.add(c.getStringCellValue().trim());
+
         while (it.hasNext()) {
             Row r = it.next();
-            Map<String,String> map = new HashMap<>();
-            for (int i=0;i<headers.size();i++) {
+            Map<String, String> row = new HashMap<>();
+            for (int i = 0; i < headers.size(); i++) {
                 Cell cell = r.getCell(i, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
-                String val = cellToString(cell);
-                map.put(headers.get(i), val);
+                row.put(headers.get(i), cellToString(cell));
             }
-            rows.add(map);
+            rows.add(row);
         }
-        LOGGER.fine("Read " + rows.size() + " data rows from DSR sheet");
         return rows;
     }
 
@@ -408,18 +367,15 @@ public class EtollVoucherGenerator {
         switch (cell.getCellType()) {
             case STRING: return cell.getStringCellValue();
             case NUMERIC:
-                if (DateUtil.isCellDateFormatted(cell)) {
+                if (DateUtil.isCellDateFormatted(cell))
                     return cell.getLocalDateTimeCellValue().toLocalDate().toString();
-                } else {
-                    return BigDecimal.valueOf(cell.getNumericCellValue()).stripTrailingZeros().toPlainString();
-                }
+                return BigDecimal.valueOf(cell.getNumericCellValue()).toPlainString();
             case BOOLEAN: return Boolean.toString(cell.getBooleanCellValue());
             case BLANK: return "";
             case FORMULA:
                 try {
-                    if (DateUtil.isCellDateFormatted(cell)) {
+                    if (DateUtil.isCellDateFormatted(cell))
                         return cell.getLocalDateTimeCellValue().toLocalDate().toString();
-                    }
                     return cell.getStringCellValue();
                 } catch (Exception e) {
                     return cell.getCellFormula();
@@ -428,64 +384,42 @@ public class EtollVoucherGenerator {
         }
     }
 
-    private static void forwardFill(List<Map<String,String>> rows, String column) {
+    private static void forwardFill(List<Map<String, String>> rows, String col) {
         String last = "";
-        for (Map<String,String> r : rows) {
-            String v = r.getOrDefault(column,"");
-            if (v == null) v = "";
-            v = v.trim();
+        for (Map<String, String> r : rows) {
+            String v = r.getOrDefault(col, "").trim();
             if (!v.isEmpty()) last = v;
-            else r.put(column, last);
+            else r.put(col, last);
         }
     }
 
-    private static LocalDate findSettlementDate(List<Map<String,String>> rows) {
-        for (Map<String,String> r : rows) {
-            String v = r.getOrDefault(COL_SETTLEMENT_DATE,"").trim();
+    private static LocalDate findSettlementDate(List<Map<String, String>> rows) {
+        for (Map<String, String> r : rows) {
+            String v = r.getOrDefault(COL_SETTLEMENT_DATE, "").trim();
             if (v.isEmpty()) continue;
+
             try {
-                if (v.matches("\\d{4}-\\d{2}-\\d{2}")) return LocalDate.parse(v, DateTimeFormatter.ISO_LOCAL_DATE);
-                if (v.matches("\\d{2}-\\d{2}-\\d{4}")) return LocalDate.parse(v, DateTimeFormatter.ofPattern("dd-MM-yyyy"));
-                if (v.matches("\\d{2}/\\d{2}/\\d{4}")) return LocalDate.parse(v, DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+                if (v.matches("\\d{4}-\\d{2}-\\d{2}"))
+                    return LocalDate.parse(v);
+                if (v.matches("\\d{2}-\\d{2}-\\d{4}"))
+                    return LocalDate.parse(v, DateTimeFormatter.ofPattern("dd-MM-yyyy"));
+                if (v.matches("\\d{2}/\\d{2}/\\d{4}"))
+                    return LocalDate.parse(v, DateTimeFormatter.ofPattern("dd/MM/yyyy"));
                 return LocalDate.parse(v);
             } catch (Exception ignored) {}
         }
         return null;
     }
 
-    private static BigDecimal toDecimal(String s) {
-        if (s == null) return BigDecimal.ZERO;
-        s = s.trim().replace(",","");
-        if (s.isEmpty() || "nan".equalsIgnoreCase(s)) return BigDecimal.ZERO;
-        try {
-            return new BigDecimal(s);
-        } catch (Exception ex) {
-            try {
-                double d = Double.parseDouble(s);
-                return BigDecimal.valueOf(d);
-            } catch (Exception ex2) {
-                return BigDecimal.ZERO;
-            }
-        }
-    }
-
-    private static BigDecimal round2(BigDecimal d) {
-        return d.setScale(2, RoundingMode.HALF_UP);
-    }
-
-    private static String safeTrimLower(String s) {
-        if (s == null) return "";
-        return s.trim().toLowerCase();
-    }
-
     private static void writeVoucherSheet(Workbook wb, List<VoucherRow> voucher) {
         Sheet sh = wb.createSheet("Voucher");
-        Row header = sh.createRow(0);
-        header.createCell(0).setCellValue("Account No");
-        header.createCell(1).setCellValue("Debit");
-        header.createCell(2).setCellValue("Credit");
-        header.createCell(3).setCellValue("Narration");
-        header.createCell(4).setCellValue("Description");
+        Row head = sh.createRow(0);
+
+        head.createCell(0).setCellValue("Account No");
+        head.createCell(1).setCellValue("Debit");
+        head.createCell(2).setCellValue("Credit");
+        head.createCell(3).setCellValue("Narration");
+        head.createCell(4).setCellValue("Description");
 
         int r = 1;
         for (VoucherRow vr : voucher) {
@@ -496,55 +430,60 @@ public class EtollVoucherGenerator {
             row.createCell(3).setCellValue(vr.narration);
             row.createCell(4).setCellValue(vr.description);
         }
-        autosizeColumns(sh, 5);
+
+        for (int c = 0; c < 5; c++) sh.autoSizeColumn(c);
     }
 
-    private static void writeUploadSheet(Workbook wb, List<List<Object>> uploadRows) {
+    private static void writeUploadSheet(Workbook wb, List<List<Object>> rows) {
         Sheet sh = wb.createSheet("Upload");
         int r = 0;
-        for (List<Object> rowData : uploadRows) {
+
+        for (List<Object> list : rows) {
             Row row = sh.createRow(r++);
-            for (int c=0;c<rowData.size();c++) {
-                Object o = rowData.get(c);
+            for (int c = 0; c < list.size(); c++) {
+                Object o = list.get(c);
                 Cell cell = row.createCell(c);
                 if (o == null) cell.setBlank();
                 else if (o instanceof Number) cell.setCellValue(((Number) o).doubleValue());
                 else cell.setCellValue(o.toString());
             }
         }
-        autosizeColumns(sh, uploadRows.isEmpty() ? 4 : uploadRows.get(0).size());
+
+        for (int c = 0; c < 4; c++) sh.autoSizeColumn(c);
     }
 
-    private static void autosizeColumns(Sheet sh, int n) {
-        for (int i=0;i<n;i++) sh.autoSizeColumn(i);
-    }
-
-    // inner helper classes
     private static class TemplateRow {
-        final String accountNo;
-        final String template;
-        final String description;
-        TemplateRow(String accountNo, String template, String description) {
-            this.accountNo = accountNo; this.template = template; this.description = description;
+        final String accountNo, template, description;
+        TemplateRow(String a, String b, String c) {
+            accountNo = a; template = b; description = c;
         }
     }
+
     private static class Rule {
         final List<String> cycles;
         final String sumCol;
         final String side;
         final String special;
+
         Rule(List<String> cycles, String sumCol, String side, String special) {
-            this.cycles = cycles; this.sumCol = sumCol; this.side = side; this.special = special;
+            this.cycles = cycles;
+            this.sumCol = sumCol;
+            this.side = side;
+            this.special = special;
         }
     }
+
     private static class VoucherRow {
         final String accountNo;
-        final BigDecimal debit;
-        final BigDecimal credit;
-        final String narration;
-        final String description;
-        VoucherRow(String accountNo, BigDecimal debit, BigDecimal credit, String narration, String description) {
-            this.accountNo = accountNo; this.debit = debit; this.credit = credit; this.narration = narration; this.description = description;
+        final BigDecimal debit, credit;
+        final String narration, description;
+
+        VoucherRow(String a, BigDecimal d, BigDecimal c, String n, String desc) {
+            accountNo = a;
+            debit = d;
+            credit = c;
+            narration = n;
+            description = desc;
         }
     }
 }

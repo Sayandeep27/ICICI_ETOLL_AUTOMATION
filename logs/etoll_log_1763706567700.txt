@@ -1,0 +1,14 @@
+Starting batch processing...
+Processing: 04-09-2025
+Settlement date inside Excel = 2025-04-09
+Final Net Amount = 222662962.40
+INWARD → incomeDr=625.39 gstDr=112.57 incomeCr=204799.54 gstCr=36863.92
+Debit=228061646.16  Credit=223564644.67
+Result: error | file: E-tollAcquiringSettlement\Processing\2025\04\09\ERROR_ETOLL_ACQUIRING_VOUCHER_090425_N1.xlsx
+Processing: 25-09-2025
+Settlement date inside Excel = 2025-09-25
+Final Net Amount = 233537688.00
+INWARD → incomeDr=24.44 gstDr=4.40 incomeCr=207277.77 gstCr=37310.00
+Debit=233809752.61  Credit=233810247.58
+Result: error | file: E-tollAcquiringSettlement\Processing\2025\09\25\ERROR_ETOLL_ACQUIRING_VOUCHER_250925_N1.xlsx
+Batch processing completed.
