@@ -1,5 +1,5 @@
 1. Start Docker Desktop
 2. cd E:\etoll-java\etoll
 3. docker compose up -d
-4. mvn exec:java -Dexec.mainClass=com.example.etoll.DsrConsumer
+4. mvn exec:java -"Dexec.mainClass=com.example.etoll.DsrConsumer"
 5. (new terminal) mvn exec:java -Dexec.mainClass=com.example.etoll.FileWatcherProducer
