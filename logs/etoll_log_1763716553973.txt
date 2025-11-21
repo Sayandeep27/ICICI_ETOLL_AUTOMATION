@@ -1,0 +1,26 @@
+[2025-11-21T14:45:53.977946200+05:30[Asia/Calcutta]] Starting batch processing (EtollVoucherGenerator) ...
+[2025-11-21T14:45:53.982394300+05:30[Asia/Calcutta]] Processing folder: 04-09-2025
+[2025-11-21T14:45:55.664889800+05:30[Asia/Calcutta]] Settlement date inside Excel = 2025-04-09
+[2025-11-21T14:45:55.668207200+05:30[Asia/Calcutta]] Final Net Amt (Rightmost+Lowest) = 222662962.40
+[2025-11-21T14:45:55.670623700+05:30[Asia/Calcutta]] Derived INWARD values -> Income Debit: 625.39, GST Debit: 112.57, Income Credit: 204799.54, GST Credit: 36863.92
+[2025-11-21T14:45:55.674159100+05:30[Asia/Calcutta]] Arbitration Vedict: summed SETAMTDR = 0.00
+[2025-11-21T14:45:55.675153800+05:30[Asia/Calcutta]] Voucher totals -> Debit: 228061646.16 Credit: 223564644.67
+[2025-11-21T14:45:56.610447300+05:30[Asia/Calcutta]] Voucher written to: E:\etoll-java\etoll\E-tollAcquiringSettlement\Processing\2025\04\09\ERROR_ETOLL_ACQUIRING_VOUCHER_090425_N1.xlsx
+[2025-11-21T14:45:56.622454700+05:30[Asia/Calcutta]] Result: {path=E-tollAcquiringSettlement\Processing\2025\04\09\ERROR_ETOLL_ACQUIRING_VOUCHER_090425_N1.xlsx, debit=228061646.16, credit=223564644.67, message=Debit and credit not tallied, status=error}
+[2025-11-21T14:45:56.624679200+05:30[Asia/Calcutta]] Processing folder: 07-10-2025
+[2025-11-21T14:45:56.786866100+05:30[Asia/Calcutta]] Settlement date inside Excel = 2025-07-10
+[2025-11-21T14:45:56.788913300+05:30[Asia/Calcutta]] Final Net Amt (Rightmost+Lowest) = 222662962.40
+[2025-11-21T14:45:56.789863+05:30[Asia/Calcutta]] Derived INWARD values -> Income Debit: 625.39, GST Debit: 112.57, Income Credit: 204799.54, GST Credit: 36863.92
+[2025-11-21T14:45:56.792865500+05:30[Asia/Calcutta]] Arbitration Vedict: summed SETAMTDR = 0.00
+[2025-11-21T14:45:56.793864200+05:30[Asia/Calcutta]] Voucher totals -> Debit: 228061646.16 Credit: 223564644.67
+[2025-11-21T14:45:56.978203900+05:30[Asia/Calcutta]] Voucher written to: E:\etoll-java\etoll\E-tollAcquiringSettlement\Processing\2025\07\10\ERROR_ETOLL_ACQUIRING_VOUCHER_100725_N1.xlsx
+[2025-11-21T14:45:56.999117900+05:30[Asia/Calcutta]] Result: {path=E-tollAcquiringSettlement\Processing\2025\07\10\ERROR_ETOLL_ACQUIRING_VOUCHER_100725_N1.xlsx, debit=228061646.16, credit=223564644.67, message=Debit and credit not tallied, status=error}
+[2025-11-21T14:45:57.000234400+05:30[Asia/Calcutta]] Processing folder: 25-09-2025
+[2025-11-21T14:45:57.659191800+05:30[Asia/Calcutta]] Settlement date inside Excel = 2025-09-25
+[2025-11-21T14:45:57.662190100+05:30[Asia/Calcutta]] Final Net Amt (Rightmost+Lowest) = 233537688.00
+[2025-11-21T14:45:57.663186700+05:30[Asia/Calcutta]] Derived INWARD values -> Income Debit: 24.44, GST Debit: 4.40, Income Credit: 207277.77, GST Credit: 37310.00
+[2025-11-21T14:45:57.674330+05:30[Asia/Calcutta]] Arbitration Vedict: summed SETAMTDR = 54324.00
+[2025-11-21T14:45:57.676006600+05:30[Asia/Calcutta]] Voucher totals -> Debit: 233809752.61 Credit: 233810247.58
+[2025-11-21T14:45:57.864674500+05:30[Asia/Calcutta]] Voucher written to: E:\etoll-java\etoll\E-tollAcquiringSettlement\Processing\2025\09\25\ERROR_ETOLL_ACQUIRING_VOUCHER_250925_N1.xlsx
+[2025-11-21T14:45:57.875641800+05:30[Asia/Calcutta]] Result: {path=E-tollAcquiringSettlement\Processing\2025\09\25\ERROR_ETOLL_ACQUIRING_VOUCHER_250925_N1.xlsx, debit=233809752.61, credit=233810247.58, message=Debit and credit not tallied, status=error}
+[2025-11-21T14:45:57.875641800+05:30[Asia/Calcutta]] Batch processing completed.
